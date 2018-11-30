@@ -28,7 +28,6 @@ trait Repository {
   * such as rendering.
   */
 @Singleton
-// TODO: check implicit EC injection
 class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Repository {
   import com.sksamuel.elastic4s.embedded.LocalNode
   import com.sksamuel.elastic4s.http.ElasticDsl._
@@ -36,7 +35,7 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
   private val logger = Logger(this.getClass)
 
   // In production, replace Elasticsearch setup actual cluster
-  val localNode = LocalNode("mycluster", "/tmp/datapath/5")
+  val localNode = LocalNode("mycluster", "/tmp/datapath/6")
   val client = localNode.client(shutdownNodeOnClose = true)
 
   // TODO: move this into post-constuct init method
@@ -53,7 +52,7 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
   override def getPageBySearchPhrase(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageData]] = {
     logger.trace(s"get book by search phrase: $searchPhrase")
     client.execute {
-      // TODO: fine-tune fuzziness
+      // TODO: use a more fuzzy unstrucutred search
       search("page") query fuzzyQuery("content", searchPhrase)
     } map { response =>
       if (response.result.hits.hits.size == 0) None
@@ -65,26 +64,18 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
     }
   }
 
-  // TODO: chain futures better to make this responsive
   def indexBook(data: BookData)(implicit mc: MarkerContext): Future[String] = {
-    Future {
-      logger.trace(s"create: data = $data")
-
-      // Index the book
-      val resp = client.execute {
-        indexInto("book" / "bookType")
-          .fields("title" -> data.title, "author" -> data.author)
-      }.await
-      val bookId = resp.result.id
-
-      // Index each page
-      for ((number, page) <- data.pages) {
+    logger.trace(s"create: data = $data")
+    client.execute {
+      indexInto("book" / "bookType")
+        .fields("title" -> data.title, "author" -> data.author)
+    } map { response =>
+      val bookId = response.result.id
+      data.pages.keySet.map( number =>
         client.execute {
           indexInto("page" / "pageType")
-            .fields("bookId" -> bookId, "number" -> number, "content" -> page)
-        }
-      }
-
+            .fields("bookId" -> bookId, "number" -> number, "content" -> data.pages(number))
+        })
       bookId
     }
   }
