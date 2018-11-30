@@ -32,19 +32,17 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
   import com.sksamuel.elastic4s.embedded.LocalNode
   import com.sksamuel.elastic4s.http.ElasticDsl._
 
-  private val logger = Logger(this.getClass)
+  val logger = Logger(this.getClass)
 
-  // In production, replace Elasticsearch setup actual cluster
+  // In production, we wouldn't be using this cluster on the local filesystem,
+  // or need to create these indexes
   val localNode = LocalNode("mycluster", "/tmp/datapath/6")
   val client = localNode.client(shutdownNodeOnClose = true)
-
-  // TODO: move this into post-constuct init method
   client.execute {
     createIndex("book").mappings(mapping("bookType").fields(
       textField("title"), textField("author")
     ))
     createIndex("page").mappings(mapping("pageType").fields(
-      // TODO: make keyword or set up parent-child relationship
       textField("bookId"), intField("number"), textField("content")
     ))
   }.await
