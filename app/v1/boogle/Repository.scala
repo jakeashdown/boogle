@@ -8,7 +8,7 @@ import play.api.{Logger, MarkerContext}
 import scala.concurrent.Future
 
 final case class BookData(id: String, title: String, author: String, pages: Map[Int, String])
-final case class PageData(id: String, bookId: String, number:String, content: String)
+final case class PageData(id: String, bookTitle: String, bookId: String, number:String, content: String)
 
 class BoogleExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
@@ -42,24 +42,33 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
     createIndex("book").mappings(mapping("bookType").fields(
       textField("title"), textField("author")
     ))
-    createIndex("page").mappings(mapping("pageType").fields(
-      textField("bookId"), intField("number"), textField("content")
+  }
+  client.execute {
+    createIndex("book").mappings(mapping("bookType").fields(
+      textField("title"), textField("author")
     ))
-  }.await
+  }
 
   override def getPageBySearchPhrase(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageData]] = {
     logger.trace(s"get book by search phrase: $searchPhrase")
     client.execute {
-      // TODO: use a more fuzzy unstrucutred search
       search("page") query fuzzyQuery("content", searchPhrase)
-    } map { response =>
-      if (response.result.hits.hits.size == 0) None
+    } map (pageResponse =>
+      if (pageResponse.result.hits.hits.size == 0) None
       else {
-        // TODO: we're only returning the first result here which is a bit arbitrary - return the best match
-        val page = response.result.hits.hits.head
-        Option(PageData(page.id, page.sourceField("bookId").toString, page.sourceField("number").toString, page.sourceField("content").toString))
+        val page = pageResponse.result.hits.hits.head
+        client.execute {
+          get(page.sourceField("bookId").toString).from("book" / "bookType")
+        } map ( bookResponse =>
+          Option(PageData(page.id,
+            bookResponse.result.sourceField("title").toString,
+            page.sourceField("bookId").toString,
+            page.sourceField("number").toString,
+            page.sourceField("content").toString)
+          )
+        ) await
       }
-    }
+    )
   }
 
   def indexBook(data: BookData)(implicit mc: MarkerContext): Future[String] = {
