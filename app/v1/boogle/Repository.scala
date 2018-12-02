@@ -8,7 +8,7 @@ import play.api.{Logger, MarkerContext}
 import scala.concurrent.Future
 
 final case class BookData(id: String, title: String, author: String, pages: Map[Int, String])
-final case class PageData(id: String, bookTitle: String, bookId: String, number:String, content: String)
+final case class PageData(id: String, bookTitle: String, bookId: String, number: String, content: String)
 
 class BoogleExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
@@ -18,6 +18,7 @@ class BoogleExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomE
 trait Repository {
   def indexBook(data: BookData)(implicit mc: MarkerContext): Future[String]
   def getPageBySearchPhrase(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageData]]
+  def deleteBook(bookId: String)(implicit mc: MarkerContext): Future[Boolean]
 }
 
 /**
@@ -49,6 +50,22 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
     ))
   }
 
+  override def indexBook(data: BookData)(implicit mc: MarkerContext): Future[String] = {
+    logger.trace(s"index book: data = $data")
+    client.execute {
+      indexInto("book" / "bookType")
+        .fields("title" -> data.title, "author" -> data.author)
+    } map { response =>
+      val bookId = response.result.id
+      data.pages.keySet.map( number =>
+        client.execute {
+          indexInto("page" / "pageType")
+            .fields("bookId" -> bookId, "number" -> number, "content" -> data.pages(number))
+        })
+      bookId
+    }
+  }
+
   override def getPageBySearchPhrase(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageData]] = {
     logger.trace(s"get book by search phrase: $searchPhrase")
     client.execute {
@@ -71,20 +88,14 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
     )
   }
 
-  def indexBook(data: BookData)(implicit mc: MarkerContext): Future[String] = {
-    logger.trace(s"create: data = $data")
+  override def deleteBook(bookId: String)(implicit mc: MarkerContext): Future[Boolean] = {
+    logger.trace(s"delete book: bookId = $bookId")
+    // Get all page IDs associated with this book
     client.execute {
-      indexInto("book" / "bookType")
-        .fields("title" -> data.title, "author" -> data.author)
-    } map { response =>
-      val bookId = response.result.id
-      data.pages.keySet.map( number =>
-        client.execute {
-          indexInto("page" / "pageType")
-            .fields("bookId" -> bookId, "number" -> number, "content" -> data.pages(number))
-        })
-      bookId
-    }
-  }
+      search("page") query termQuery("bookId", bookId)
+    }.await
 
+
+    Future(true)
+  }
 }

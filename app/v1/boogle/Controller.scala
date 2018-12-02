@@ -31,29 +31,37 @@ class Controller @Inject()(cc: BoogleControllerComponents)(implicit ec: Executio
     )
   }
 
-  def process: Action[AnyContent] = BoogleActionBuilder.async { implicit request =>
-    logger.trace("process: ")
+  def indexBookForSearch: Action[AnyContent] = BoogleActionBuilder.async { implicit request =>
+    def processJsonBook[A]()(implicit request: BoogleRequest[A]): Future[Result] = {
+      def failure(badForm: Form[BookInput]) = {
+        Future.successful(BadRequest(badForm.errorsAsJson))
+      }
+
+      def success(input: BookInput) = {
+        resourceHandler.create(input).map { resource =>
+          Created(Json.toJson(resource))
+        }
+      }
+
+      form.bindFromRequest().fold(failure, success)
+    }
+
+    logger.trace(s"indexing book for search: $request")
     processJsonBook()
   }
 
-  def show(searchPhrase: String): Action[AnyContent] = BoogleActionBuilder.async { implicit request =>
-    logger.trace(s"show: searchPhrase = $searchPhrase")
+  def fastSearchOfPages(searchPhrase: String): Action[AnyContent] = BoogleActionBuilder.async { implicit request =>
+    logger.trace(s"fast search of book pages: $request")
     resourceHandler.lookup(searchPhrase).map { page =>
       Ok(Json.toJson(page))
     }
   }
 
-  private def processJsonBook[A]()(implicit request: BoogleRequest[A]): Future[Result] = {
-    def failure(badForm: Form[BookInput]) = {
-      Future.successful(BadRequest(badForm.errorsAsJson))
-    }
-
-    def success(input: BookInput) = {
-      resourceHandler.create(input).map { resource =>
-        Created(Json.toJson(resource))
-      }
-    }
-
-    form.bindFromRequest().fold(failure, success)
+  def deIndexBook(bookId: String): Action[AnyContent] = BoogleActionBuilder.async { implicit request =>
+    logger.trace(s"de-index book: $request")
+    resourceHandler.delete(bookId) map ( success =>
+        Ok(Json.toJson(success))
+    )
   }
+
 }

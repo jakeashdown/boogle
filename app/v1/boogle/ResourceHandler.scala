@@ -11,10 +11,10 @@ import play.api.libs.json._
   * DTOs
   */
 case class BookResource(id: String, title: String, author: String, pages: Map[Int, String])
-case class PageResource(id: String, bookId: String, number: String, content: String)
+case class PageResource(id: String, bookId: String, bookTitle: String, number: String, content: String)
+case class DeleteResource(success: Boolean)
 
 object BookResource {
-
   /**
     * Mapping to write a BookResource out as a JSON value.
     */
@@ -32,7 +32,6 @@ object BookResource {
 }
 
 object PageResource {
-
   /**
     * Mapping to write a PageResource out as a JSON value.
     */
@@ -41,8 +40,22 @@ object PageResource {
       Json.obj(
         "id" -> resource.id,
         "bookId" -> resource.bookId,
+        "bookTitle" -> resource.bookTitle,
         "number" -> resource.number,
         "content" -> resource.content
+      )
+    }
+  }
+}
+
+object DeleteResource {
+  /**
+    * Mapping to write a DeleteResource out as a JSON value.
+    */
+  implicit val implicitWrites = new Writes[DeleteResource] {
+    override def writes(resource: DeleteResource): JsValue = {
+      Json.obj(
+        "success" -> resource.success
       )
     }
   }
@@ -73,12 +86,16 @@ class ResourceHandler @Inject()(routerProvider: Provider[Router],
     }
   }
 
+  def delete(bookId: String)(implicit mc: MarkerContext): Future[DeleteResource] = {
+    repository.deleteBook(bookId) map ( DeleteResource(_) )
+  }
+
   private def createBookResource(data: BookData): BookResource = {
     BookResource(data.id, data.title, data.author, data.pages)
   }
 
   private def createPageResource(data: PageData): PageResource = {
-    PageResource(data.id, data.bookId, data.number, data.content)
+    PageResource(data.id, data.bookId, data.bookTitle, data.number, data.content)
   }
 
   // TODO: don't need this, just keep pages as an array
