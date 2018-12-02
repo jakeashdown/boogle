@@ -10,7 +10,7 @@ import play.api.libs.json._
 /**
   * DTOs
   */
-case class BookResource(id: String, title: String, author: String, pages: Map[Int, String])
+case class BookResource(id: String, title: String, author: String, pages: List[String])
 case class PageResource(id: String, bookId: String, bookTitle: String, number: String, content: String)
 case class DeleteResource(success: Boolean)
 
@@ -20,7 +20,7 @@ object BookResource {
     */
   implicit val implicitWrites = new Writes[BookResource] {
     def writes(resource: BookResource): JsValue = {
-      val pages = if (resource.pages != null && resource.pages.size > 0) resource.pages else Map()
+      val pages = if (resource.pages != null && resource.pages.size > 0) resource.pages else List()
       Json.obj(
         "id" -> resource.id,
         "title" -> resource.title,
@@ -67,18 +67,15 @@ object DeleteResource {
 class ResourceHandler @Inject()(routerProvider: Provider[Router],
                                 repository: Repository)(implicit ec: ExecutionContext) {
 
-  def create(bookInput: BookInput)(implicit mc: MarkerContext): Future[BookResource] = {
-    // TODO: Fix this mutable mess
-    val pageMap = createPageMap(bookInput.pages)
-    var data = BookData(null, bookInput.title, bookInput.author, pageMap)
-    repository.indexBook(data).map { id =>
-      data = BookData(id, bookInput.title, bookInput.author, pageMap)
-      createBookResource(data)
+  def indexBookData(bookInput: BookInput)(implicit mc: MarkerContext): Future[BookResource] = {
+    var data = BookData(null, bookInput.title, bookInput.author, bookInput.pages)
+    repository.indexBookData(data) map { id =>
+      createBookResource(BookData(id, bookInput.title, bookInput.author, bookInput.pages))
     }
   }
 
-  def lookup(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageResource]] = {
-    val future = repository.getPageBySearchPhrase(searchPhrase)
+  def getPageResourceForSearchString(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageResource]] = {
+    val future = repository.getPageDataBySearchPhrase(searchPhrase)
     future.map { maybeData =>
       maybeData.map { data =>
         createPageResource(data)
@@ -87,7 +84,7 @@ class ResourceHandler @Inject()(routerProvider: Provider[Router],
   }
 
   def delete(bookId: String)(implicit mc: MarkerContext): Future[DeleteResource] = {
-    repository.deleteBook(bookId) map ( DeleteResource(_) )
+    repository.deleteBookByBookId(bookId) map ( DeleteResource(_) )
   }
 
   private def createBookResource(data: BookData): BookResource = {
@@ -96,13 +93,6 @@ class ResourceHandler @Inject()(routerProvider: Provider[Router],
 
   private def createPageResource(data: PageData): PageResource = {
     PageResource(data.id, data.bookId, data.bookTitle, data.number, data.content)
-  }
-
-  // TODO: don't need this, just keep pages as an array
-  private def createPageMap(pages: List[String]): Map[Int, String] = {
-    var pageMap: Map[Int, String] = Map()
-    (0 to (pages.size - 1)).foreach(i => pageMap += (i -> pages(i)))
-    pageMap
   }
 
 }

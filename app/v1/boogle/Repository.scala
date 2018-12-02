@@ -7,7 +7,7 @@ import play.api.{Logger, MarkerContext}
 
 import scala.concurrent.Future
 
-final case class BookData(id: String, title: String, author: String, pages: Map[Int, String])
+final case class BookData(id: String, title: String, author: String, pages: List[String])
 final case class PageData(id: String, bookTitle: String, bookId: String, number: String, content: String)
 
 class BoogleExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
@@ -16,9 +16,9 @@ class BoogleExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomE
   * A pure non-blocking interface for the Repository.
   */
 trait Repository {
-  def indexBook(data: BookData)(implicit mc: MarkerContext): Future[String]
-  def getPageBySearchPhrase(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageData]]
-  def deleteBook(bookId: String)(implicit mc: MarkerContext): Future[Boolean]
+  def indexBookData(data: BookData)(implicit mc: MarkerContext): Future[String]
+  def getPageDataBySearchPhrase(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageData]]
+  def deleteBookByBookId(bookId: String)(implicit mc: MarkerContext): Future[Boolean]
 }
 
 /**
@@ -50,24 +50,25 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
     ))
   }
 
-  override def indexBook(data: BookData)(implicit mc: MarkerContext): Future[String] = {
+  override def indexBookData(data: BookData)(implicit mc: MarkerContext): Future[String] = {
     logger.trace(s"index book: data = $data")
     client.execute {
-      indexInto("book" / "bookType")
-        .fields("title" -> data.title, "author" -> data.author)
+      indexInto("book" / "bookType") fields("title" -> data.title, "author" -> data.author)
     } map { response =>
       val bookId = response.result.id
-      data.pages.keySet.map( number =>
-        client.execute {
-          indexInto("page" / "pageType")
-            .fields("bookId" -> bookId, "number" -> number, "content" -> data.pages(number))
-        })
+      val pageFutures = for { (content, index) <- data.pages.zipWithIndex }
+        yield {
+          client.execute {
+            indexInto("page" / "pageType")
+              .fields("bookId" -> bookId, "number" -> (index + 1), "content" -> content)
+          }
+        }
       bookId
     }
   }
 
-  override def getPageBySearchPhrase(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageData]] = {
-    logger.trace(s"get book by search phrase: $searchPhrase")
+  override def getPageDataBySearchPhrase(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageData]] = {
+    logger.trace(s"get page data: searchPhrase = $searchPhrase")
     client.execute {
       search("page") query fuzzyQuery("content", searchPhrase)
     } map (pageResponse =>
@@ -88,7 +89,7 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
     )
   }
 
-  override def deleteBook(bookId: String)(implicit mc: MarkerContext): Future[Boolean] = {
+  override def deleteBookByBookId(bookId: String)(implicit mc: MarkerContext): Future[Boolean] = {
     logger.trace(s"delete book: bookId = $bookId")
     // Get all page IDs associated with this book
     client.execute {
