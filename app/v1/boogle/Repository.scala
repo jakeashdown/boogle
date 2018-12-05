@@ -2,6 +2,8 @@ package v1.boogle
 
 import javax.inject.{Inject, Singleton}
 import akka.actor.ActorSystem
+import com.sksamuel.elastic4s.http.Response
+import com.sksamuel.elastic4s.http.delete.DeleteResponse
 import play.api.libs.concurrent.CustomExecutionContext
 import play.api.{Logger, MarkerContext}
 
@@ -37,19 +39,9 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
 
   val logger = Logger(this.getClass)
 
-  // In production, we wouldn't be using this cluster on the local filesystem, or need to create these indexes
-  val localNode = LocalNode("mycluster", "/tmp/datapath/6")
+  // In production, we wouldn't be using this cluster on the local filesystem
+  val localNode = LocalNode("mycluster", "/tmp/datapath/8")
   val client = localNode.client(shutdownNodeOnClose = true)
-  client.execute {
-    createIndex("book").mappings(mapping("bookType").fields(
-      textField("title"), textField("author")
-    ))
-  }
-  client.execute {
-    createIndex("book").mappings(mapping("bookType").fields(
-      textField("title"), textField("author")
-    ))
-  }
 
   override def indexBookData(data: BookData)(implicit mc: MarkerContext): Future[String] = {
     logger.trace(s"index book: data = $data")
@@ -57,7 +49,7 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
       indexInto("book" / "bookType") fields("title" -> data.title, "author" -> data.author)
     } map { response =>
       val bookId = response.result.id
-      val pageFutures = for { (content, index) <- data.pages.zipWithIndex }
+      for { (content, index) <- data.pages.zipWithIndex }
         yield {
           client.execute {
             indexInto("page" / "pageType")
@@ -79,7 +71,7 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
         else {
           val page = success.result.hits.hits.head
           client.execute {
-            get(page.sourceField("bookId").toString).from("book" / "bookType")
+            get(page.sourceField("bookId").toString) from("book" / "bookType")
           } map { bookResponse =>
             Option(PageData(page.id,
               bookResponse.result.sourceField("title").toString,
@@ -97,9 +89,26 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
     // Get all page IDs associated with this book
     client.execute {
       search("page") query termQuery("bookId", bookId)
-    }.await
-
-
-    Future(true)
+    } flatMap {
+      case _: RequestFailure => Future(false)
+      case success: RequestSuccess[SearchResponse] =>
+        val pageIds = success.result.hits.hits.map(_.id).toList
+        val deletePageFutures = for { id <- pageIds }
+          yield client.execute {
+            delete(id) from("page" / "pageType")
+          }
+        Future.sequence(deletePageFutures)
+    } flatMap { case deleteResponses: List[Response[DeleteResponse]] =>
+        val deleteFailures = deleteResponses.filter { case failure: RequestFailure => true }
+        if (deleteFailures.nonEmpty) Future(false)
+        else {
+          client.execute {
+            delete(bookId) from("book" / "bookType")
+          } map {
+            case _: RequestFailure => false
+            case _: RequestSuccess[_] => true
+          }
+        }
+    }
   }
 }

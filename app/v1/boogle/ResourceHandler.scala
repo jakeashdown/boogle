@@ -21,7 +21,9 @@ object BookResource {
   implicit val implicitWrites = new Writes[BookResource] {
     def writes(resource: BookResource): JsValue = {
       val pageMap = if (resource.pages != null && resource.pages.nonEmpty) {
-        resource.pages.zipWithIndex
+        resource.pages.zipWithIndex.map {
+          case (content, page) => (page + 1) -> content
+        }
       } else List()
       Json.obj(
         "id" -> resource.id,
@@ -70,7 +72,7 @@ class ResourceHandler @Inject()(routerProvider: Provider[Router],
                                 repository: Repository)(implicit ec: ExecutionContext) {
 
   def indexBookData(bookInput: BookInput)(implicit mc: MarkerContext): Future[BookResource] = {
-    var data = BookData(null, bookInput.title, bookInput.author, bookInput.pages)
+    val data = BookData(null, bookInput.title, bookInput.author, bookInput.pages)
     repository.indexBookData(data) map(id =>
       createBookResource(BookData(id, bookInput.title, bookInput.author, bookInput.pages))
     )
