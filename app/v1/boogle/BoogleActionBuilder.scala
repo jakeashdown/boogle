@@ -67,7 +67,7 @@ class BoogleActionBuilder @Inject()(messagesApi: MessagesApi,
 
     val future = block(new BoogleRequest(request, messagesApi))
 
-    future.map { result =>
+    future map { result =>
       request.method match {
         case GET | HEAD =>
           result.withHeaders("Cache-Control" -> s"max-age: 100")

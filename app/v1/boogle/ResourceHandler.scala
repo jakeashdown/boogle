@@ -20,12 +20,14 @@ object BookResource {
     */
   implicit val implicitWrites = new Writes[BookResource] {
     def writes(resource: BookResource): JsValue = {
-      val pages = if (resource.pages != null && resource.pages.size > 0) resource.pages else List()
+      val pageMap = if (resource.pages != null && resource.pages.nonEmpty) {
+        resource.pages.zipWithIndex
+      } else List()
       Json.obj(
         "id" -> resource.id,
         "title" -> resource.title,
         "author" -> resource.author,
-        "pages" -> pages
+        "pages" -> pageMap
       )
     }
   }
@@ -69,22 +71,20 @@ class ResourceHandler @Inject()(routerProvider: Provider[Router],
 
   def indexBookData(bookInput: BookInput)(implicit mc: MarkerContext): Future[BookResource] = {
     var data = BookData(null, bookInput.title, bookInput.author, bookInput.pages)
-    repository.indexBookData(data) map { id =>
+    repository.indexBookData(data) map(id =>
       createBookResource(BookData(id, bookInput.title, bookInput.author, bookInput.pages))
-    }
+    )
   }
 
   def getPageResourceForSearchString(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageResource]] = {
     val future = repository.getPageDataBySearchPhrase(searchPhrase)
-    future.map { maybeData =>
-      maybeData.map { data =>
-        createPageResource(data)
-      }
+    future map { maybeData =>
+      maybeData map(data => createPageResource(data))
     }
   }
 
   def delete(bookId: String)(implicit mc: MarkerContext): Future[DeleteResource] = {
-    repository.deleteBookByBookId(bookId) map ( DeleteResource(_) )
+    repository.deleteBookByBookId(bookId) map(DeleteResource(_) )
   }
 
   private def createBookResource(data: BookData): BookResource = {

@@ -38,9 +38,9 @@ class Controller @Inject()(cc: BoogleControllerComponents)(implicit ec: Executio
       }
 
       def success(input: BookInput) = {
-        resourceHandler.indexBookData(input).map { resource =>
+        resourceHandler.indexBookData(input) map(resource =>
           Created(Json.toJson(resource))
-        }
+        )
       }
       logger.trace(s"indexing book for search: $request")
       form.bindFromRequest().fold(failure, success)
@@ -50,14 +50,14 @@ class Controller @Inject()(cc: BoogleControllerComponents)(implicit ec: Executio
 
   def fastSearchOfPages(searchPhrase: String): Action[AnyContent] = BoogleActionBuilder.async { implicit request =>
     logger.trace(s"fast search of book pages: $request")
-    resourceHandler.getPageResourceForSearchString(searchPhrase).map { page =>
+    resourceHandler.getPageResourceForSearchString(searchPhrase) map(page =>
       Ok(Json.toJson(page))
-    }
+    )
   }
 
   def deIndexBook(bookId: String): Action[AnyContent] = BoogleActionBuilder.async { implicit request =>
     logger.trace(s"de-index book: $request")
-    resourceHandler.delete(bookId) map ( success =>
+    resourceHandler.delete(bookId) map(success =>
         Ok(Json.toJson(success))
     )
   }
