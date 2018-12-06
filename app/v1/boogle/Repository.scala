@@ -59,7 +59,7 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
   override def getPageDataBySearchPhrase(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageData]] = {
     logger.trace(s"get page data: searchPhrase = $searchPhrase")
     client.execute {
-      search("page") query fuzzyQuery("content", searchPhrase)
+      search("page") query searchPhrase
     } flatMap {
       case _: RequestFailure => Future(None)
       case success: RequestSuccess[SearchResponse] =>
