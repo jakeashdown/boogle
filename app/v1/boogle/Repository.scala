@@ -88,18 +88,21 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
     logger.trace(s"delete book: bookId = $bookId")
     // Get all page IDs associated with this book
     client.execute {
-      search("page") query termQuery("bookId", bookId)
+      search("page") query bookId
     } flatMap {
       case _: RequestFailure => Future(false)
       case success: RequestSuccess[SearchResponse] =>
-        val pageIds = success.result.hits.hits.map(_.id).toList
-        val deletePageFutures = for { id <- pageIds }
+        val pageIds = success.result.hits.hits
+        val deletePageFutures = for { id <- pageIds.map(_.id).toList }
           yield client.execute {
             delete(id) from("page" / "pageType")
           }
         Future.sequence(deletePageFutures)
-    } flatMap { case deleteResponses: List[Response[DeleteResponse]] =>
-        val deleteFailures = deleteResponses.filter { case failure: RequestFailure => true }
+    } flatMap { case deleteResponses: List[Response[_]] =>
+        val deleteFailures = deleteResponses.filter {
+          case failure: RequestFailure => true
+          case success: RequestSuccess[DeleteResponse] => false
+        }
         if (deleteFailures.nonEmpty) Future(false)
         else {
           client.execute {
