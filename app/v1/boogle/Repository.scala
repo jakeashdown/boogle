@@ -4,6 +4,7 @@ import javax.inject.{Inject, Singleton}
 import akka.actor.ActorSystem
 import com.sksamuel.elastic4s.http.{ElasticClient, ElasticProperties, Response}
 import com.sksamuel.elastic4s.http.delete.DeleteResponse
+import com.sksamuel.elastic4s.http.get.GetResponse
 import play.api.libs.concurrent.CustomExecutionContext
 import play.api.{Logger, MarkerContext}
 
@@ -12,14 +13,22 @@ import scala.concurrent.Future
 final case class BookData(id: String, title: String, author: String, pages: List[String])
 final case class PageData(id: String, bookTitle: String, bookId: String, number: String, content: String)
 
+final case class NoSuchBook() extends Throwable
+
 class BoogleExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
 /**
   * A pure non-blocking interface for the Repository.
   */
 trait Repository {
+  // Return the ID of the indexed book or page
   def indexBookData(data: BookData)(implicit mc: MarkerContext): Future[String]
+  def indexPageData(data: PageData)(implicit mc: MarkerContext): Future[String]
+
+  // Return the page matching the search phrase, including the ID and title of the book
   def getPageDataBySearchPhrase(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageData]]
+
+  // Delete all pages, and the book itself, associated with a given ID
   def deleteBookByBookId(bookId: String)(implicit mc: MarkerContext): Future[Boolean]
 }
 
@@ -53,6 +62,25 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
           }
         }
       bookId
+    }
+  }
+
+  override def indexPageData(data: PageData)(implicit mc: MarkerContext): Future[String] = {
+    logger.trace(s"index page: data = $data")
+    // Check that the given book exists
+    client.execute {
+      get("book", "bookType", data.bookId)
+    } flatMap {
+      case _: RequestFailure => throw NoSuchBook()
+      case success: RequestSuccess[GetResponse] =>
+        if (!success.result.found) throw NoSuchBook()
+        else {
+          // Index the page
+          client.execute {
+            indexInto("page" / "pageType")
+              .fields("bookId" -> data.bookId, "number" -> data.number, "content" -> data.content)
+          } map(_.result.id)
+        }
     }
   }
 

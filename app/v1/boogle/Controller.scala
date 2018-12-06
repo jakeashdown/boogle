@@ -10,6 +10,7 @@ import play.api.mvc._
 import scala.concurrent.{ExecutionContext, Future}
 
 case class BookInput(title: String, author: String, pages: List[String])
+case class PageInput(number: Int, content: String)
 
 /**
   * Takes HTTP requests and produces JSON.
@@ -19,15 +20,26 @@ class Controller @Inject()(cc: BoogleControllerComponents)(implicit ec: Executio
 
   private val logger = Logger(getClass)
 
-  private val form: Form[BookInput] = {
+  private val bookForm: Form[BookInput] = {
     import play.api.data.Forms._
 
     Form(
       mapping(
         "title" -> nonEmptyText,
         "author" -> nonEmptyText,
-        "pages" -> list(text)
+        "pages" -> list(nonEmptyText)
       )(BookInput.apply)(BookInput.unapply)
+    )
+  }
+
+  private val pageForm: Form[PageInput] = {
+    import play.api.data.Forms._
+
+    Form(
+      mapping(
+        "number" -> number(1),
+        "content" -> nonEmptyText
+      )(PageInput.apply)(PageInput.unapply)
     )
   }
 
@@ -36,16 +48,34 @@ class Controller @Inject()(cc: BoogleControllerComponents)(implicit ec: Executio
       def failure(badForm: Form[BookInput]) = {
         Future.successful(BadRequest(badForm.errorsAsJson))
       }
-
       def success(input: BookInput) = {
         resourceHandler.indexBookData(input) map(resource =>
           Created(Json.toJson(resource))
-        )
+          )
       }
       logger.trace(s"indexing book for search: $request")
-      form.bindFromRequest().fold(failure, success)
+      bookForm.bindFromRequest().fold(failure, success)
     }
     processJsonBook()
+  }
+
+  def indexPageOfBookForSearch(bookId: String): Action[AnyContent] = BoogleActionBuilder.async { implicit request =>
+    def processJsonPage[A](bookId: String)(implicit request: BoogleRequest[A]): Future[Result] = {
+      def failure(badForm: Form[PageInput]) = {
+        Future.successful(BadRequest(badForm.errorsAsJson))
+      }
+      def success(input: PageInput) = {
+        resourceHandler.indexPageData(input, bookId) map { resource => Created(Json.toJson(resource))
+        } recover {
+          // TODO: Add error message
+          case NoSuchBook() => BadRequest(Json.toJson(PageResource(null, null, null, null, null)))
+        }
+
+      }
+      logger.trace(s"indexing page for search: $request")
+      pageForm.bindFromRequest().fold(failure, success)
+    }
+    processJsonPage(bookId)
   }
 
   def fastSearchOfPages(searchPhrase: String): Action[AnyContent] = BoogleActionBuilder.async { implicit request =>

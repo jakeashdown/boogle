@@ -71,11 +71,19 @@ object DeleteResource {
 class ResourceHandler @Inject()(routerProvider: Provider[Router],
                                 repository: Repository)(implicit ec: ExecutionContext) {
 
-  def indexBookData(bookInput: BookInput)(implicit mc: MarkerContext): Future[BookResource] = {
-    val data = BookData(null, bookInput.title, bookInput.author, bookInput.pages)
+  def indexBookData(input: BookInput)(implicit mc: MarkerContext): Future[BookResource] = {
+    val data = BookData(null, input.title, input.author, input.pages)
     repository.indexBookData(data) map(id =>
-      createBookResource(BookData(id, bookInput.title, bookInput.author, bookInput.pages))
+      createBookResource(BookData(id, input.title, input.author, input.pages))
     )
+  }
+
+  def indexPageData(input: PageInput, bookId: String)(implicit mc: MarkerContext): Future[PageResource] = {
+    val data = PageData(null, null, bookId, input.number.toString, input.content)
+    repository.indexPageData(data) map { id => createPageResource(PageData(id, null, bookId, input.number.toString, input.content))
+    } recover {
+      case error: NoSuchBook => throw error
+    }
   }
 
   def getPageResourceForSearchString(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageResource]] = {

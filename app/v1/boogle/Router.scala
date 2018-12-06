@@ -15,6 +15,9 @@ class Router @Inject()(controller: Controller) extends SimpleRouter {
     case POST(p"/") =>
       controller.indexBookForSearch
 
+    case POST(p"/$bookId/page") =>
+      controller.indexPageOfBookForSearch(bookId)
+
     case GET(p"/page" ? q_?"searchPhrase=$searchPhrase") =>
       controller.fastSearchOfPages(searchPhrase.get)
 
