@@ -2,7 +2,7 @@ package v1.boogle
 
 import javax.inject.{Inject, Singleton}
 import akka.actor.ActorSystem
-import com.sksamuel.elastic4s.http.Response
+import com.sksamuel.elastic4s.http.{ElasticClient, ElasticProperties, Response}
 import com.sksamuel.elastic4s.http.delete.DeleteResponse
 import play.api.libs.concurrent.CustomExecutionContext
 import play.api.{Logger, MarkerContext}
@@ -32,16 +32,12 @@ trait Repository {
   */
 @Singleton
 class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Repository {
-  import com.sksamuel.elastic4s.embedded.LocalNode
   import com.sksamuel.elastic4s.http.ElasticDsl._
   import com.sksamuel.elastic4s.http.{RequestFailure, RequestSuccess}
   import com.sksamuel.elastic4s.http.search.SearchResponse
 
   val logger = Logger(this.getClass)
-
-  // In production, we wouldn't be using this cluster on the local filesystem
-  val localNode = LocalNode("mycluster", "/tmp/datapath/8")
-  val client = localNode.client(shutdownNodeOnClose = true)
+  val client = ElasticClient(ElasticProperties("http://localhost:9200"))
 
   override def indexBookData(data: BookData)(implicit mc: MarkerContext): Future[String] = {
     logger.trace(s"index book: data = $data")
