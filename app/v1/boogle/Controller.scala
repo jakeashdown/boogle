@@ -49,9 +49,7 @@ class Controller @Inject()(cc: BoogleControllerComponents)(implicit ec: Executio
         Future.successful(BadRequest(badForm.errorsAsJson))
       }
       def success(input: BookInput) = {
-        resourceHandler.indexBookData(input) map(resource =>
-          Created(Json.toJson(resource))
-          )
+        resourceHandler.indexBookData(input) map(id => Created(id))
       }
       logger.trace(s"indexing book for search: $request")
       bookForm.bindFromRequest().fold(failure, success)
@@ -67,8 +65,7 @@ class Controller @Inject()(cc: BoogleControllerComponents)(implicit ec: Executio
       def success(input: PageInput) = {
         resourceHandler.indexPageData(input, bookId) map { resource => Created(Json.toJson(resource))
         } recover {
-          // TODO: Add error message
-          case NoSuchBook() => BadRequest(Json.toJson(PageResource(null, null, null, null, null)))
+          case error: NoSuchBookError => BadRequest(error.toString)
         }
 
       }

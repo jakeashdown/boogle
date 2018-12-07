@@ -1,8 +1,7 @@
 package v1.boogle
 
 import javax.inject.{Inject, Provider}
-
-import play.api.MarkerContext
+import play.api.{Logger, MarkerContext}
 
 import scala.concurrent.{ExecutionContext, Future}
 import play.api.libs.json._
@@ -13,6 +12,8 @@ import play.api.libs.json._
 case class BookResource(id: String, title: String, author: String, pages: List[String])
 case class PageResource(id: String, bookId: String, bookTitle: String, number: String, content: String)
 case class DeleteResource(success: Boolean)
+
+final case class NoSuchBookError(id: String) extends Throwable
 
 object BookResource {
   /**
@@ -71,18 +72,25 @@ object DeleteResource {
 class ResourceHandler @Inject()(routerProvider: Provider[Router],
                                 repository: Repository)(implicit ec: ExecutionContext) {
 
-  def indexBookData(input: BookInput)(implicit mc: MarkerContext): Future[BookResource] = {
-    val data = BookData(null, input.title, input.author, input.pages)
-    repository.indexBookData(data) map(id =>
-      createBookResource(BookData(id, input.title, input.author, input.pages))
-    )
+  def indexBookData(input: BookInput)(implicit mc: MarkerContext): Future[String] = {
+    val book = BookData(null, input.title, input.author)
+    repository.indexBookData(book) map { id =>
+        // If we fail to index a page, log an error but don't return it
+        for { (content, index) <- input.pages.zipWithIndex } yield {
+            repository.indexPageData(PageData(null, input.title, id, (index + 1).toString, content))
+        }
+        id
+    }
   }
 
-  def indexPageData(input: PageInput, bookId: String)(implicit mc: MarkerContext): Future[PageResource] = {
-    val data = PageData(null, null, bookId, input.number.toString, input.content)
-    repository.indexPageData(data) map { id => createPageResource(PageData(id, null, bookId, input.number.toString, input.content))
-    } recover {
-      case error: NoSuchBook => throw error
+  def indexPageData(input: PageInput, bookId: String)(implicit mc: MarkerContext): Future[String] = {
+    // Check the book exists
+    repository.getBookById(bookId) flatMap {
+      case None =>
+        throw NoSuchBookError(bookId)
+      case Some(_) =>
+        val data = PageData(null, null, bookId, input.number.toString, input.content)
+        repository.indexPageData(data)
     }
   }
 
@@ -95,10 +103,6 @@ class ResourceHandler @Inject()(routerProvider: Provider[Router],
 
   def delete(bookId: String)(implicit mc: MarkerContext): Future[DeleteResource] = {
     repository.deleteBookByBookId(bookId) map(DeleteResource(_) )
-  }
-
-  private def createBookResource(data: BookData): BookResource = {
-    BookResource(data.id, data.title, data.author, data.pages)
   }
 
   private def createPageResource(data: PageData): PageResource = {

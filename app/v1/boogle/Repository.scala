@@ -2,18 +2,24 @@ package v1.boogle
 
 import javax.inject.{Inject, Singleton}
 import akka.actor.ActorSystem
-import com.sksamuel.elastic4s.http.{ElasticClient, ElasticProperties, Response}
+import com.sksamuel.elastic4s.http.{ElasticClient, ElasticProperties, RequestFailure, Response}
 import com.sksamuel.elastic4s.http.delete.DeleteResponse
 import com.sksamuel.elastic4s.http.get.GetResponse
+import com.sksamuel.elastic4s.http.index.IndexResponse
 import play.api.libs.concurrent.CustomExecutionContext
 import play.api.{Logger, MarkerContext}
 
 import scala.concurrent.Future
 
-final case class BookData(id: String, title: String, author: String, pages: List[String])
+final case class BookData(id: String, title: String, author: String)
 final case class PageData(id: String, bookTitle: String, bookId: String, number: String, content: String)
 
-final case class NoSuchBook() extends Throwable
+final case class IndexBookError(failure: RequestFailure) extends Throwable
+final case class IndexPageError(failure: RequestFailure) extends Throwable
+
+final case class GetBookError(failure: RequestFailure) extends Throwable
+
+final case class SearchPageError(failure: RequestFailure) extends Throwable
 
 class BoogleExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
@@ -24,6 +30,9 @@ trait Repository {
   // Return the ID of the indexed book or page
   def indexBookData(data: BookData)(implicit mc: MarkerContext): Future[String]
   def indexPageData(data: PageData)(implicit mc: MarkerContext): Future[String]
+
+  // Gets the book by ID, if it exists
+  def getBookById(bookId: String)(implicit mc: MarkerContext): Future[Option[BookData]]
 
   // Return the page matching the search phrase, including the ID and title of the book
   def getPageDataBySearchPhrase(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageData]]
@@ -52,34 +61,41 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
     logger.trace(s"index book: data = $data")
     client.execute {
       indexInto("book" / "bookType") fields("title" -> data.title, "author" -> data.author)
-    } map { response =>
-      val bookId = response.result.id
-      for { (content, index) <- data.pages.zipWithIndex }
-        yield {
-          client.execute {
-            indexInto("page" / "pageType")
-              .fields("bookId" -> bookId, "number" -> (index + 1), "content" -> content)
-          }
-        }
-      bookId
+    } map {
+      case failure: RequestFailure =>
+        logger.error(s"error indexing book: data = $data, error = $failure")
+        throw IndexBookError(failure)
+      case success: RequestSuccess[IndexResponse] =>
+        success.result.id
     }
   }
 
   override def indexPageData(data: PageData)(implicit mc: MarkerContext): Future[String] = {
     logger.trace(s"index page: data = $data")
-    // Check that the given book exists
     client.execute {
-      get("book", "bookType", data.bookId)
-    } flatMap {
-      case _: RequestFailure => throw NoSuchBook()
+      indexInto("page" / "pageType") fields("bookId" -> data.bookId, "number" -> data.number, "content" -> data.content)
+    } map {
+      case failure: RequestFailure =>
+        logger.error(s"error indexing page: data = $data, error = $failure")
+        throw IndexPageError(failure)
+      case success: RequestSuccess[IndexResponse] =>
+        success.result.id
+    }
+  }
+
+  override def getBookById(bookId: String)(implicit mc: MarkerContext): Future[Option[BookData]] = {
+    logger.trace(s"get book: ID = $bookId")
+    client.execute {
+      get(bookId) from("book" / "bookType")
+    } map {
+      case failure: RequestFailure =>
+        logger.error(s"error getting book: ID = $bookId, error = $failure")
+        throw GetBookError(failure)
       case success: RequestSuccess[GetResponse] =>
-        if (!success.result.found) throw NoSuchBook()
+        if (!success.result.found) None
         else {
-          // Index the page
-          client.execute {
-            indexInto("page" / "pageType")
-              .fields("bookId" -> data.bookId, "number" -> data.number, "content" -> data.content)
-          } map(_.result.id)
+          val data = BookData(success.result.id, success.result.sourceField("title").toString, success.result.sourceField("author").toString)
+          Option(data)
         }
     }
   }
