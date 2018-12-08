@@ -84,8 +84,8 @@ class Controller @Inject()(cc: BoogleControllerComponents)(implicit ec: Executio
 
   def deIndexBook(bookId: String): Action[AnyContent] = BoogleActionBuilder.async { implicit request =>
     logger.trace(s"de-index book: $request")
-    resourceHandler.delete(bookId) map(success =>
-        Ok(Json.toJson(success))
+    resourceHandler.delete(bookId) map(_ =>
+        Ok(Json.toJson("book de-indexed"))
     )
   }
 

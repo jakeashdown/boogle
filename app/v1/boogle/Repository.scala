@@ -34,12 +34,14 @@ trait Repository {
   def getBookById(bookId: String)(implicit mc: MarkerContext): Future[Option[BookData]]
 
   // Return the page matching the search phrase, if it exists
-  def searchForPage(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageData]]
+  def searchForPageByContent(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageData]]
 
-  // Delete all pages, and the book itself, associated with a given ID
-  def deleteBookByBookId(bookId: String)(implicit mc: MarkerContext): Future[Boolean]
+  // Return all pages associated with a book
+  def searchForPagesByBookId(bookId: String)(implicit mc: MarkerContext): Future[List[PageData]]
 
-  def deletePageById(id: String)(implicit mc: MarkerContext): Future[Boolean]
+  // Delete a book or page by it's ID
+  def deleteBookById(bookId: String)(implicit mc: MarkerContext): Future[Unit]
+  def deletePageById(id: String)(implicit mc: MarkerContext): Future[Unit]
 
 }
 
@@ -99,8 +101,8 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
     }
   }
 
-  override def searchForPage(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageData]] = {
-    logger.trace(s"search for page: search phrase = $searchPhrase")
+  override def searchForPageByContent(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageData]] = {
+    logger.trace(s"search for page by content: search phrase = $searchPhrase")
     client.execute {
       search("page") query searchPhrase
     } map {
@@ -117,36 +119,45 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
     }
   }
 
-  override def deleteBookByBookId(bookId: String)(implicit mc: MarkerContext): Future[Boolean] = {
-    logger.trace(s"delete book: bookId = $bookId")
-    // Get all page IDs associated with this book
+  override def searchForPagesByBookId(bookId: String)(implicit mc: MarkerContext): Future[List[PageData]] = {
+    logger.trace(s"search for pages: book ID = $bookId")
     client.execute {
       search("page") query bookId
-    } flatMap {
-      case _: RequestFailure => Future(false)
+    } map {
+      case failure: RequestFailure =>
+        logger.error(s"error searching for page: book ID = $bookId, error = $failure")
+        throw SearchPageError(failure)
       case success: RequestSuccess[SearchResponse] =>
-        val pageIds = success.result.hits.hits
-        val deletePageFutures = for { id <- pageIds.map(_.id).toList }
-          yield client.execute {
-            delete(id) from("page" / "pageType")
-          }
-        Future.sequence(deletePageFutures)
-    } flatMap { case deleteResponses: List[Response[_]] =>
-        val deleteFailures = deleteResponses.filter {
-          case failure: RequestFailure => true
-          case success: RequestSuccess[DeleteResponse] => false
-        }
-        if (deleteFailures.nonEmpty) Future(false)
+        if (success.result.isEmpty) List()
         else {
-          client.execute {
-            delete(bookId) from("book" / "bookType")
-          } map {
-            case _: RequestFailure => false
-            case _: RequestSuccess[_] => true
-          }
+          success.result.hits.hits map { page =>
+            PageData(page.id, page.sourceField("bookId").toString, page.sourceField("number").toString, page.sourceField("content").toString)
+          } toList
         }
     }
   }
 
-  override def deletePageById(id: String)(implicit mc: MarkerContext): Future[Boolean] = ???
+  override def deleteBookById(id: String)(implicit mc: MarkerContext): Future[Unit] = {
+    logger.trace(s"delete book: ID = $id")
+    client.execute {
+      delete(id) from("book" / "bookType")
+    } map {
+      case failure: RequestFailure =>
+        logger.error(s"error deleting book: ID = $id, error = $failure")
+        throw DeletePageError(failure)
+      case success: RequestSuccess[DeleteResponse] => Unit
+    }
+  }
+
+  override def deletePageById(id: String)(implicit mc: MarkerContext): Future[Unit] = {
+    logger.trace(s"delete page: ID = $id")
+    client.execute {
+      delete(id) from("page" / "pageType")
+    } map {
+      case failure: RequestFailure =>
+        logger.error(s"error deleting page: ID = $id, error = $failure")
+        throw DeletePageError(failure)
+      case success: RequestSuccess[DeleteResponse] => Unit
+    }
+  }
 }

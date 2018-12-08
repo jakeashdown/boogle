@@ -74,12 +74,11 @@ class ResourceHandler @Inject()(routerProvider: Provider[Router],
 
   def indexBookData(input: BookInput)(implicit mc: MarkerContext): Future[String] = {
     val book = BookData(null, input.title, input.author)
-    repository.indexBookData(book) map { id =>
-        // If we fail to index a page, log an error but don't return it
-        for { (content, index) <- input.pages.zipWithIndex } yield {
+    repository.indexBookData(book) flatMap { id =>
+        val indexPageFutures = for { (content, index) <- input.pages.zipWithIndex } yield {
             repository.indexPageData(PageData(null, id, (index + 1).toString, content))
         }
-        id
+        Future.sequence(indexPageFutures) map { _ => id }
     }
   }
 
@@ -94,7 +93,7 @@ class ResourceHandler @Inject()(routerProvider: Provider[Router],
   }
 
   def getPageResourceForSearchString(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageResource]] = {
-    repository.searchForPage(searchPhrase) flatMap {
+    repository.searchForPageByContent(searchPhrase) flatMap {
       case None => Future(None)
       case Some(page) =>
         // Get the book that this page is from
@@ -107,7 +106,18 @@ class ResourceHandler @Inject()(routerProvider: Provider[Router],
     }
   }
 
-  def delete(bookId: String)(implicit mc: MarkerContext): Future[DeleteResource] = {
-    repository.deleteBookByBookId(bookId) map(DeleteResource(_) )
+  def delete(bookId: String)(implicit mc: MarkerContext): Future[Unit] = {
+    repository.getBookById(bookId) flatMap {
+      case None =>
+        throw NoSuchBookError(bookId)
+      case Some(book) =>
+        // Delete the pages
+        repository.searchForPagesByBookId(bookId) flatMap { pages =>
+          val deletePageFutures = pages map { page => repository.deletePageById(page.id) }
+          Future.sequence(deletePageFutures)
+        } flatMap { _ =>
+          repository.deleteBookById(bookId)
+        }
+    }
   }
 }
