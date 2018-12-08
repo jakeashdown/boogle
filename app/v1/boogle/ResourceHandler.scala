@@ -1,7 +1,7 @@
 package v1.boogle
 
 import javax.inject.{Inject, Provider}
-import play.api.{Logger, MarkerContext}
+import play.api.MarkerContext
 
 import scala.concurrent.{ExecutionContext, Future}
 import play.api.libs.json._
@@ -77,7 +77,7 @@ class ResourceHandler @Inject()(routerProvider: Provider[Router],
     repository.indexBookData(book) map { id =>
         // If we fail to index a page, log an error but don't return it
         for { (content, index) <- input.pages.zipWithIndex } yield {
-            repository.indexPageData(PageData(null, input.title, id, (index + 1).toString, content))
+            repository.indexPageData(PageData(null, id, (index + 1).toString, content))
         }
         id
     }
@@ -89,24 +89,25 @@ class ResourceHandler @Inject()(routerProvider: Provider[Router],
       case None =>
         throw NoSuchBookError(bookId)
       case Some(_) =>
-        val data = PageData(null, null, bookId, input.number.toString, input.content)
-        repository.indexPageData(data)
+        repository.indexPageData(PageData(null, bookId, input.number.toString, input.content))
     }
   }
 
   def getPageResourceForSearchString(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageResource]] = {
-    val future = repository.getPageDataBySearchPhrase(searchPhrase)
-    future map { maybeData =>
-      maybeData map(data => createPageResource(data))
+    repository.searchForPage(searchPhrase) flatMap {
+      case None => Future(None)
+      case Some(page) =>
+        // Get the book that this page is from
+        repository.getBookById(page.bookId) map {
+          case None =>
+            throw NoSuchBookError(page.bookId)
+          case Some(book) =>
+            Option(PageResource(page.id, page.bookId, book.title, page.number, page.content))
+        }
     }
   }
 
   def delete(bookId: String)(implicit mc: MarkerContext): Future[DeleteResource] = {
     repository.deleteBookByBookId(bookId) map(DeleteResource(_) )
   }
-
-  private def createPageResource(data: PageData): PageResource = {
-    PageResource(data.id, data.bookId, data.bookTitle, data.number, data.content)
-  }
-
 }

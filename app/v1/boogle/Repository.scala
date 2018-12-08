@@ -12,14 +12,13 @@ import play.api.{Logger, MarkerContext}
 import scala.concurrent.Future
 
 final case class BookData(id: String, title: String, author: String)
-final case class PageData(id: String, bookTitle: String, bookId: String, number: String, content: String)
+final case class PageData(id: String, bookId: String, number: String, content: String)
 
 final case class IndexBookError(failure: RequestFailure) extends Throwable
 final case class IndexPageError(failure: RequestFailure) extends Throwable
-
 final case class GetBookError(failure: RequestFailure) extends Throwable
-
 final case class SearchPageError(failure: RequestFailure) extends Throwable
+final case class DeletePageError(failure: RequestFailure) extends Throwable
 
 class BoogleExecutionContext @Inject()(actorSystem: ActorSystem) extends CustomExecutionContext(actorSystem, "repository.dispatcher")
 
@@ -34,11 +33,14 @@ trait Repository {
   // Gets the book by ID, if it exists
   def getBookById(bookId: String)(implicit mc: MarkerContext): Future[Option[BookData]]
 
-  // Return the page matching the search phrase, including the ID and title of the book
-  def getPageDataBySearchPhrase(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageData]]
+  // Return the page matching the search phrase, if it exists
+  def searchForPage(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageData]]
 
   // Delete all pages, and the book itself, associated with a given ID
   def deleteBookByBookId(bookId: String)(implicit mc: MarkerContext): Future[Boolean]
+
+  def deletePageById(id: String)(implicit mc: MarkerContext): Future[Boolean]
+
 }
 
 /**
@@ -93,33 +95,24 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
         throw GetBookError(failure)
       case success: RequestSuccess[GetResponse] =>
         if (!success.result.found) None
-        else {
-          val data = BookData(success.result.id, success.result.sourceField("title").toString, success.result.sourceField("author").toString)
-          Option(data)
-        }
+        else Option(BookData(success.result.id, success.result.sourceField("title").toString, success.result.sourceField("author").toString))
     }
   }
 
-  override def getPageDataBySearchPhrase(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageData]] = {
-    logger.trace(s"get page data: searchPhrase = $searchPhrase")
+  override def searchForPage(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageData]] = {
+    logger.trace(s"search for page: search phrase = $searchPhrase")
     client.execute {
       search("page") query searchPhrase
-    } flatMap {
-      case _: RequestFailure => Future(None)
+    } map {
+      case failure: RequestFailure =>
+        logger.error(s"error searching for page: search phrase = $searchPhrase, error = $failure")
+        throw SearchPageError(failure)
       case success: RequestSuccess[SearchResponse] =>
-        if (success.result.hits.hits.length == 0) Future(None)
+        if (success.result.hits.hits.length == 0) None
         else {
+          // We're only returning the first hit - we should make sure this is ordered by 'best match first'
           val page = success.result.hits.hits.head
-          client.execute {
-            get(page.sourceField("bookId").toString) from("book" / "bookType")
-          } map { bookResponse =>
-            Option(PageData(page.id,
-              bookResponse.result.sourceField("title").toString,
-              page.sourceField("bookId").toString,
-              page.sourceField("number").toString,
-              page.sourceField("content").toString)
-            )
-          }
+          Option(PageData(page.id, page.sourceField("bookId").toString, page.sourceField("number").toString, page.sourceField("content").toString))
         }
     }
   }
@@ -154,4 +147,6 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
         }
     }
   }
+
+  override def deletePageById(id: String)(implicit mc: MarkerContext): Future[Boolean] = ???
 }
