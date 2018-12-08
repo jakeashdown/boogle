@@ -51,3 +51,7 @@ libraryDependencies ++= Seq(
   // for the http client
   "com.sksamuel.elastic4s" %% "elastic4s-http" % elastic4sVersion,
 )
+
+libraryDependencies ++= Seq("org.specs2" %% "specs2-core" % "4.3.4" % "test")
+
+scalacOptions in Test ++= Seq("-Yrangepos")
