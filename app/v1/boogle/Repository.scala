@@ -2,7 +2,7 @@ package v1.boogle
 
 import javax.inject.{Inject, Singleton}
 import akka.actor.ActorSystem
-import com.sksamuel.elastic4s.http.{ElasticClient, ElasticProperties, RequestFailure, Response}
+import com.sksamuel.elastic4s.http.{ElasticClient, ElasticProperties, RequestFailure}
 import com.sksamuel.elastic4s.http.delete.DeleteResponse
 import com.sksamuel.elastic4s.http.get.GetResponse
 import com.sksamuel.elastic4s.http.index.IndexResponse

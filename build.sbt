@@ -31,7 +31,7 @@ lazy val root = (project in file("."))
   .configs(GatlingTest)
   .settings(inConfig(GatlingTest)(Defaults.testSettings): _*)
   .settings(
-    name := """play-scala-rest-api-example""",
+    name := "boogle",
     scalaSource in GatlingTest := baseDirectory.value / "/gatling/simulation"
   )
 
@@ -43,7 +43,7 @@ lazy val docs = (project in file("docs")).enablePlugins(ParadoxPlugin).
     paradoxProperties += ("download_url" -> "https://example.lightbend.com/v1/download/play-rest-api")
   )
 
-// major.minor are in sync with the elasticsearch releases
+// Elasticsearch client: major.minor are in sync with the elasticsearch releases
 val elastic4sVersion = "6.4.0"
 libraryDependencies ++= Seq(
   "com.sksamuel.elastic4s" %% "elastic4s-core" % elastic4sVersion,
@@ -52,6 +52,5 @@ libraryDependencies ++= Seq(
   "com.sksamuel.elastic4s" %% "elastic4s-http" % elastic4sVersion,
 )
 
-libraryDependencies ++= Seq("org.specs2" %% "specs2-core" % "4.3.4" % "test")
-
-scalacOptions in Test ++= Seq("-Yrangepos")
+// Add the ScalaMock library (versions 4.0.0 onwards)
+libraryDependencies += "org.scalamock" %% "scalamock" % "4.1.0" % Test
