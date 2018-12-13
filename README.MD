@@ -3,18 +3,14 @@ SETUP
 Install sbt package (using apt-get).
 httpie is used for testing
 
+RUNNING APPLICATION AND UNIT TESTS
 
-
-RUNNING
-
-'sbt run' from terminal
-
-
+'sbt run', 'sbt test' from terminal
 
 USAGE
 
 Index a book:
-http --verbose --json POST http://localhost:9000/v1/book title='Acceptance' author='Jeff' pages[0]='The first page' pages[1]='The second page'
+http --verbose --json POST http://localhost:9000/v1/book title='Annihilation' author='Jeff Vandermeer' pages[0]='The first page' pages[1]='The second page'
 
-Search for a book page:
- http --verbose http://localhost:9000/v1/book/page?searchPhrase=keyword
+Search for a book page with content 'first':
+ http --verbose GET http://localhost:9000/v1/book?query=first
