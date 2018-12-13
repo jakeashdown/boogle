@@ -75,9 +75,9 @@ class Controller @Inject()(cc: BoogleControllerComponents)(implicit ec: Executio
     processJsonPage(bookId)
   }
 
-  def fastSearchOfPages(searchPhrase: String): Action[AnyContent] = BoogleActionBuilder.async { implicit request =>
+  def fastSearchOfPages(query: String): Action[AnyContent] = BoogleActionBuilder.async { implicit request =>
     logger.trace(s"fast search of book pages: $request")
-    resourceHandler.getPageResourceForSearchString(searchPhrase) map(page =>
+    resourceHandler.getPageResourceForQuery(query) map(page =>
       Ok(Json.toJson(page))
     )
   }

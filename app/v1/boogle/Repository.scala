@@ -34,12 +34,12 @@ trait Repository {
   def getBookById(bookId: String)(implicit mc: MarkerContext): Future[Option[BookData]]
 
   // Return the page matching the search phrase, if it exists
-  def searchForPageByContent(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageData]]
+  def searchForPageByContent(content: String)(implicit mc: MarkerContext): Future[Option[PageData]]
 
   // Return all pages associated with a book
   def searchForPagesByBookId(bookId: String)(implicit mc: MarkerContext): Future[List[PageData]]
 
-  // Delete a book or page by it's ID
+  // Delete a book or page by the ID
   def deleteBookById(bookId: String)(implicit mc: MarkerContext): Future[Unit]
   def deletePageById(id: String)(implicit mc: MarkerContext): Future[Unit]
 
@@ -101,18 +101,18 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
     }
   }
 
-  override def searchForPageByContent(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageData]] = {
-    logger.trace(s"search for page by content: search phrase = $searchPhrase")
+  override def searchForPageByContent(content: String)(implicit mc: MarkerContext): Future[Option[PageData]] = {
+    logger.trace(s"search for page by content: search phrase = $content")
     client.execute {
-      search("page") query searchPhrase
+      search("page") query content
     } map {
       case failure: RequestFailure =>
-        logger.error(s"error searching for page: search phrase = $searchPhrase, error = $failure")
+        logger.error(s"error searching for page: search phrase = $content, error = $failure")
         throw SearchPageError(failure)
       case success: RequestSuccess[SearchResponse] =>
         if (success.result.hits.hits.length == 0) None
         else {
-          // We're only returning the first hit - we should make sure this is ordered by 'best match first'
+          // TODO: order this by '_score' (https://www.elastic.co/guide/en/elasticsearch/reference/current/query-filter-context.html)
           val page = success.result.hits.hits.head
           Option(PageData(page.id, page.sourceField("bookId").toString, page.sourceField("number").toString, page.sourceField("content").toString))
         }

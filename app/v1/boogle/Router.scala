@@ -18,8 +18,8 @@ class Router @Inject()(controller: Controller) extends SimpleRouter {
     case POST(p"/$bookId/page") =>
       controller.indexPageOfBookForSearch(bookId)
 
-    case GET(p"/page" ? q_?"searchPhrase=$searchPhrase") =>
-      controller.fastSearchOfPages(searchPhrase.get)
+    case GET(q_?"query=$query") =>
+      controller.fastSearchOfPages(query.get)
 
     case DELETE(p"/$bookId") =>
       controller.deIndexBook(bookId)

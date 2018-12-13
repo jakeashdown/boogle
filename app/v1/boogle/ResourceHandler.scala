@@ -92,11 +92,11 @@ class ResourceHandler @Inject()(routerProvider: Provider[Router],
     }
   }
 
-  def getPageResourceForSearchString(searchPhrase: String)(implicit mc: MarkerContext): Future[Option[PageResource]] = {
-    repository.searchForPageByContent(searchPhrase) flatMap {
+  def getPageResourceForQuery(query: String)(implicit mc: MarkerContext): Future[Option[PageResource]] = {
+    repository.searchForPageByContent(query) flatMap {
       case None => Future(None)
       case Some(page) =>
-        // Get the book that this page is from
+        // Get the title of the book containing this page
         repository.getBookById(page.bookId) map {
           case None =>
             throw NoSuchBookError(page.bookId)
@@ -111,7 +111,7 @@ class ResourceHandler @Inject()(routerProvider: Provider[Router],
       case None =>
         throw NoSuchBookError(bookId)
       case Some(book) =>
-        // Delete the pages
+        // Delete the pages before deleting the book
         repository.searchForPagesByBookId(bookId) flatMap { pages =>
           val deletePageFutures = pages map { page => repository.deletePageById(page.id) }
           Future.sequence(deletePageFutures)
