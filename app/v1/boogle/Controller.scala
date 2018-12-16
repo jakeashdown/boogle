@@ -43,6 +43,12 @@ class Controller @Inject()(cc: BoogleControllerComponents)(implicit ec: Executio
     )
   }
 
+  // TODO: this causes a lot of requests to the repository, so add rate limiting
+  def listAllBooks(): Action[AnyContent] = BoogleActionBuilder.async { implicit request =>
+    logger.trace(s"list all books")
+    resourceHandler.listAllBooks().map(books => Ok(Json.toJson(books)))
+  }
+
   def indexBookForSearch: Action[AnyContent] = BoogleActionBuilder.async { implicit request =>
     def processJsonBook[A]()(implicit request: BoogleRequest[A]): Future[Result] = {
       def failure(badForm: Form[BookInput]) = {
@@ -77,16 +83,12 @@ class Controller @Inject()(cc: BoogleControllerComponents)(implicit ec: Executio
 
   def fastSearchOfPages(query: String): Action[AnyContent] = BoogleActionBuilder.async { implicit request =>
     logger.trace(s"fast search of book pages: $request")
-    resourceHandler.getPageResourceForQuery(query) map(page =>
-      Ok(Json.toJson(page))
-    )
+    resourceHandler.getPageResourceForQuery(query) map(page => Ok(Json.toJson(page)))
   }
 
   def deIndexBook(bookId: String): Action[AnyContent] = BoogleActionBuilder.async { implicit request =>
     logger.trace(s"de-index book: $request")
-    resourceHandler.delete(bookId) map(_ =>
-        Ok(Json.toJson("book de-indexed"))
-    )
+    resourceHandler.delete(bookId).map(_ => Ok(""))
   }
 
 }

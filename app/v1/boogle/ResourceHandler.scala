@@ -72,13 +72,25 @@ object DeleteResource {
 class ResourceHandler @Inject()(routerProvider: Provider[Router],
                                 repository: Repository)(implicit ec: ExecutionContext) {
 
+  def listAllBooks()(implicit mc: MarkerContext): Future[List[BookResource]] = {
+    repository.getBooks() flatMap { books =>
+      val pageFutures = for {book <- books } yield {
+        repository.searchForPagesByBookId(book.id) map { pageList =>
+          val pages = pageList.sortBy(_.number).map(_.content)
+          BookResource(book.id, book.title, book.author, pages)
+        }
+      }
+      Future.sequence(pageFutures)
+    }
+  }
+
   def indexBookData(input: BookInput)(implicit mc: MarkerContext): Future[String] = {
     val book = BookData(null, input.title, input.author)
     repository.indexBookData(book) flatMap { id =>
-        val indexPageFutures = for { (content, index) <- input.pages.zipWithIndex } yield {
+        val pageFutures = for {(content, index) <- input.pages.zipWithIndex } yield {
             repository.indexPageData(PageData(null, id, (index + 1).toString, content))
         }
-        Future.sequence(indexPageFutures) map { _ => id }
+        Future.sequence(pageFutures) map { _ => id }
     }
   }
 

@@ -30,13 +30,16 @@ trait Repository {
   def indexBookData(data: BookData)(implicit mc: MarkerContext): Future[String]
   def indexPageData(data: PageData)(implicit mc: MarkerContext): Future[String]
 
+  // Get all books
+  def getBooks()(implicit mc: MarkerContext): Future[List[BookData]]
+
   // Gets the book by ID, if it exists
   def getBookById(bookId: String)(implicit mc: MarkerContext): Future[Option[BookData]]
 
   // Return the page matching the search phrase, if it exists
   def searchForPageByContent(content: String)(implicit mc: MarkerContext): Future[Option[PageData]]
 
-  // Return all pages associated with a book
+  // Return all pages associated with a book, in order
   def searchForPagesByBookId(bookId: String)(implicit mc: MarkerContext): Future[List[PageData]]
 
   // Delete a book or page by the ID
@@ -63,7 +66,7 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
 
   override def indexBookData(data: BookData)(implicit mc: MarkerContext): Future[String] = {
     logger.trace(s"index book: data = $data")
-    client.execute {
+    client execute {
       indexInto("book" / "bookType") fields("title" -> data.title, "author" -> data.author)
     } map {
       case failure: RequestFailure =>
@@ -76,7 +79,7 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
 
   override def indexPageData(data: PageData)(implicit mc: MarkerContext): Future[String] = {
     logger.trace(s"index page: data = $data")
-    client.execute {
+    client execute {
       indexInto("page" / "pageType") fields("bookId" -> data.bookId, "number" -> data.number, "content" -> data.content)
     } map {
       case failure: RequestFailure =>
@@ -87,9 +90,27 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
     }
   }
 
+
+  override def getBooks()(implicit mc: MarkerContext): Future[List[BookData]] = {
+    logger.trace(s"get all books")
+    client execute {
+      search("book")
+    } map {
+      case failure: RequestFailure =>
+        logger.error(s"error getting all books, error = $failure")
+        throw SearchPageError(failure)
+      case success: RequestSuccess[SearchResponse] =>
+        if (success.result.isEmpty) List()
+        else {
+          success.result.hits.hits.toList
+            .map(book => BookData(book.id, book.sourceField("title").toString, book.sourceField("title").toString))
+        }
+    }
+  }
+
   override def getBookById(bookId: String)(implicit mc: MarkerContext): Future[Option[BookData]] = {
     logger.trace(s"get book: ID = $bookId")
-    client.execute {
+    client execute {
       get(bookId) from("book" / "bookType")
     } map {
       case failure: RequestFailure =>
@@ -103,14 +124,14 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
 
   override def searchForPageByContent(content: String)(implicit mc: MarkerContext): Future[Option[PageData]] = {
     logger.trace(s"search for page by content: search phrase = $content")
-    client.execute {
+    client execute {
       search("page") query content
     } map {
       case failure: RequestFailure =>
         logger.error(s"error searching for page: search phrase = $content, error = $failure")
         throw SearchPageError(failure)
       case success: RequestSuccess[SearchResponse] =>
-        if (success.result.hits.hits.length == 0) None
+        if (success.result.isEmpty) None
         else {
           // TODO: order this by '_score' (https://www.elastic.co/guide/en/elasticsearch/reference/current/query-filter-context.html)
           val page = success.result.hits.hits.head
@@ -121,7 +142,7 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
 
   override def searchForPagesByBookId(bookId: String)(implicit mc: MarkerContext): Future[List[PageData]] = {
     logger.trace(s"search for pages: book ID = $bookId")
-    client.execute {
+    client execute {
       search("page") query bookId
     } map {
       case failure: RequestFailure =>
@@ -139,7 +160,7 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
 
   override def deleteBookById(id: String)(implicit mc: MarkerContext): Future[Unit] = {
     logger.trace(s"delete book: ID = $id")
-    client.execute {
+    client execute {
       delete(id) from("book" / "bookType")
     } map {
       case failure: RequestFailure =>
@@ -151,7 +172,7 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
 
   override def deletePageById(id: String)(implicit mc: MarkerContext): Future[Unit] = {
     logger.trace(s"delete page: ID = $id")
-    client.execute {
+    client execute {
       delete(id) from("page" / "pageType")
     } map {
       case failure: RequestFailure =>

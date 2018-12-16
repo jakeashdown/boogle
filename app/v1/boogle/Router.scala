@@ -12,6 +12,9 @@ class Router @Inject()(controller: Controller) extends SimpleRouter {
   val prefix = "/v1/book"
 
   override def routes: Routes = {
+    case GET(p"/") =>
+      controller.listAllBooks
+
     case POST(p"/") =>
       controller.indexBookForSearch
 
