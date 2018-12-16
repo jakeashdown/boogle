@@ -103,7 +103,7 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
         if (success.result.isEmpty) List()
         else {
           success.result.hits.hits.toList
-            .map(book => BookData(book.id, book.sourceField("title").toString, book.sourceField("title").toString))
+            .map(book => BookData(book.id, book.sourceField("title").toString, book.sourceField("author").toString))
         }
     }
   }
@@ -143,6 +143,7 @@ class RepositoryImpl @Inject()()(implicit ec: BoogleExecutionContext) extends Re
   override def searchForPagesByBookId(bookId: String)(implicit mc: MarkerContext): Future[List[PageData]] = {
     logger.trace(s"search for pages: book ID = $bookId")
     client execute {
+      // TODO: sort by "number" so we don't have to do it here
       search("page") query bookId
     } map {
       case failure: RequestFailure =>
